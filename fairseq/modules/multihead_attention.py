@@ -144,6 +144,7 @@ class MultiheadAttention(FairseqIncrementalDecoder):
         self.beam_size = 1
         self.reset_parameters()
 
+   
         if self.use_xformers:
             xformers_att_config["dropout"] = xformers_att_config.get("dropout", dropout)
             xformers_att_config["num_heads"] = xformers_att_config.get(
@@ -514,6 +515,20 @@ class MultiheadAttention(FairseqIncrementalDecoder):
                 assert value is not None
                 assert src_len, key_bsz == value.shape[:2]
 
+        '''
+        ********************************************** 
+        ZIPIT Modification
+        hacky workaround of this problem for ZipIt
+        https://github.com/pytorch/pytorch/issues/78109
+        ********************************************** 
+        '''
+        self.skip_embed_dim_check = True
+        '''
+        ********************************************** 
+        END Modification
+        ********************************************** 
+        '''
+        
         if (
             not self.onnx_trace
             and not is_tpu  # don't use PyTorch version on TPUs
@@ -529,6 +544,26 @@ class MultiheadAttention(FairseqIncrementalDecoder):
             and not self.skip_embed_dim_check
         ):
             assert key is not None and value is not None
+            #breakpoint()
+
+            # self.use_xformers = True
+
+            # if self.use_xformers:
+            #     xformers_att_config = {}
+            #     xformers_att_config["dropout"] = self.dropout_module.p
+            #     xformers_att_config["num_heads"] = self.num_heads
+            #     xformers_att_config["name"] = "scaled_dot_product"
+
+            #     xformers_blocksparse_layout = None
+            #     if xformers_blocksparse_layout is not None:
+            #         # Could be part of a single config passed only once
+            #         xformers_att_config["block_size"] = xformers_blocksparse_blocksize
+            #         xformers_att_config["layout"] = xformers_blocksparse_layout
+            #         xformers_att_config["name"] = "blocksparse"
+
+            #     self.attention = build_attention(xformers_att_config)
+
+            
 
             if self.use_xformers:
                 return self._xformers_attn_forward(
@@ -699,7 +734,7 @@ class MultiheadAttention(FairseqIncrementalDecoder):
             )
             attn_weights = attn_weights.reshape((-1,) + attn_weights.size()[-2:])
         else:
-            attn_weights = torch.bmm(q, k.transpose(1, 2))
+            attn_weights = torch.bmm(q, k.transpose(1, 2)) # QK^T
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
 
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
